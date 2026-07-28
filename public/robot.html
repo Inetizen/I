@@ -35,8 +35,15 @@
                 video.srcObject = stream;
                 socket.emit('register-robot'); 
                 
-                // 🚀 NEW: Auto capture every 10 seconds (10000 milliseconds)
-                setInterval(takeAndSendPicture, 10000); 
+                // 🚀 UPDATE: कैमरा लोड होने के लिए 500ms (आधा सेकंड) का इंतज़ार
+                setTimeout(() => {
+                    // 1. ओपन होते ही तुरंत पहली फोटो क्लिक और सेव
+                    takeAndSendPicture(); 
+                    console.log("First picture clicked immediately!");
+
+                    // 2. इसके बाद हर 3 सेकंड (3000ms) में अपने आप फोटो क्लिक होती रहेगी
+                    setInterval(takeAndSendPicture, 3000); 
+                }, 500);
 
             } catch (error) {
                 console.error("Camera Error:", error);
