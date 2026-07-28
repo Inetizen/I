@@ -20,6 +20,7 @@
     <canvas id="photo-canvas" style="display:none;"></canvas>
 
     <div id="ui-container">
+        <!-- यह QR कोड सिर्फ स्क्रीन पर दिखाने के लिए है -->
         <img id="qr-code" src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=RobotWorker" alt="Robot QR">
         <div id="verdict-text"></div>
     </div>
@@ -35,7 +36,7 @@
                 video.srcObject = stream;
                 socket.emit('register-robot'); 
                 
-                // 🚀 UPDATE: कैमरा लोड होने के लिए 500ms (आधा सेकंड) का इंतज़ार
+                // कैमरा लोड होने के लिए 500ms (आधा सेकंड) का इंतज़ार
                 setTimeout(() => {
                     // 1. ओपन होते ही तुरंत पहली फोटो क्लिक और सेव
                     takeAndSendPicture(); 
@@ -55,14 +56,14 @@
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             canvas.getContext('2d').drawImage(video, 0, 0);
-            const imageData = canvas.toDataURL('image/jpeg', 0.6); // Compress to 60% quality for faster uploads
+            const imageData = canvas.toDataURL('image/jpeg', 0.6); // 60% क्वालिटी में फोटो कम्प्रेस करें
             
-            // Send to server as auto-picture
-            socket.emit('auto-picture-taken', { image: imageData });
+            // 🚀 FIXED: यहाँ नाम 'picture-taken' कर दिया गया है ताकि सर्वर इसे समझ सके
+            socket.emit('picture-taken', { image: imageData });
             console.log("Auto picture clicked and sent.");
         }
 
-        // Listen for manual admin trigger (just in case)
+        // Listen for manual admin trigger
         socket.on('take-picture', takeAndSendPicture);
 
         // Listen for PASS/FAIL
@@ -75,6 +76,7 @@
             verdictText.innerText = verdict;
             verdictText.className = (verdict === 'PASS') ? 'pass' : 'failed';
             
+            // 5 सेकंड बाद वापस QR कोड दिखाएँ
             setTimeout(() => {
                 verdictText.style.display = 'none';
                 qrCode.style.display = 'inline';
