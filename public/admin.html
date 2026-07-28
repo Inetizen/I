@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin - Robot Dashboard</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; }
+        .robot-card { background: white; padding: 15px; margin-bottom: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        button { padding: 10px 15px; margin: 5px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; }
+        .btn-trigger { background: #007bff; color: white; }
+        .btn-pass { background: #28a745; color: white; }
+        .btn-fail { background: #dc3545; color: white; }
+        #captured-image { max-width: 400px; display: none; margin-top: 10px; border: 3px solid black; }
+    </style>
+</head>
+<body>
+
+    <h1>Robot Control Panel</h1>
+    <div id="robot-list">Waiting for robots to connect...</div>
+
+    <h2>Latest Capture:</h2>
+    <img id="captured-image" src="" alt="Captured from robot">
+    <div id="verdict-controls" style="display: none;">
+        <button class="btn-pass" onclick="sendVerdict('PASS')">Send PASS</button>
+        <button class="btn-fail" onclick="sendVerdict('FAILED')">Send FAILED</button>
+    </div>
+
+    <script>
+        const socket = io();
+        let currentViewingRobot = null;
+
+        // Update the list of connected robots
+        socket.on('update-robot-list', (robots) => {
+            const listDiv = document.getElementById('robot-list');
+            listDiv.innerHTML = '';
+            
+            if (Object.keys(robots).length === 0) {
+                listDiv.innerHTML = 'No robots connected.';
+                return;
+            }
+
+            for (const id in robots) {
+                listDiv.innerHTML += `
+                    <div class="robot-card">
+                        <strong>Robot ID:</strong> ${id} 
+                        <button class="btn-trigger" onclick="triggerPic('${id}')">Force Picture</button>
+                    </div>
+                `;
+            }
+        });
+
+        // Receive picture from robot
+        socket.on('receive-picture', (data) => {
+            currentViewingRobot = data.robotId;
+            const img = document.getElementById('captured-image');
+            img.src = data.imageStr;
+            img.style.display = 'block';
+            document.getElementById('verdict-controls').style.display = 'block';
+        });
+
+        // Request robot to take picture
+        function triggerPic(robotId) {
+            socket.emit('admin-trigger-pic', robotId);
+        }
+
+        // Send Pass/Fail back to robot
+        function sendVerdict(verdict) {
+            if (currentViewingRobot) {
+                socket.emit('send-verdict', { robotId: currentViewingRobot, verdict: verdict });
+                document.getElementById('verdict-controls').style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
