@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robot Worker UI</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: white; font-family: Arial, sans-serif; }
+        #camera-feed { display: none; } /* Hidden, only used for snapping pics */
+        #ui-container { text-align: center; }
+        #verdict-text { font-size: 15vw; font-weight: bold; display: none; text-transform: uppercase; }
+        .pass { color: green; }
+        .failed { color: red; }
+    </style>
+</head>
+<body>
+
+    <video id="camera-feed" autoplay playsinline muted></video>
+    <canvas id="photo-canvas" style="display:none;"></canvas>
+
+    <div id="ui-container">
+        <!-- Placeholder QR Code for Robot ID -->
+        <img id="qr-code" src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=RobotWorker" alt="Robot QR">
+        <div id="verdict-text"></div>
+    </div>
+
+    <script>
+        const socket = io();
+        const video = document.getElementById('camera-feed');
+        const canvas = document.getElementById('photo-canvas');
+        const uiContainer = document.getElementById('ui-container');
+        const qrCode = document.getElementById('qr-code');
+        const verdictText = document.getElementById('verdict-text');
+
+        // 1. Initialize Camera silently (Zero-Prompt)
+        async function initializeCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { ideal: 1280 }, audio: false });
+                video.srcObject = stream;
+                socket.emit('register-robot'); // Tell server we are ready
+            } catch (error) {
+                console.error("Camera Error:", error);
+            }
+        }
+
+        // 2. Listen for Admin Trigger
+        socket.on('take-picture', () => {
+            // Draw video frame to canvas
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            
+            // Convert to Base64 image and send to server
+            const imageData = canvas.toDataURL('image/jpeg', 0.8);
+            socket.emit('picture-taken', { image: imageData });
+            
+            // Update UI to waiting state
+            qrCode.style.display = 'none';
+            verdictText.className = '';
+            verdictText.style.display = 'block';
+            verdictText.style.color = 'black';
+            verdictText.innerText = 'PROCESSING...';
+        });
+
+        // 3. Listen for PASS/FAIL from Admin
+        socket.on('show-verdict', (verdict) => {
+            verdictText.innerText = verdict;
+            if (verdict === 'PASS') {
+                verdictText.className = 'pass';
+            } else {
+                verdictText.className = 'failed';
+            }
+            
+            // Reset back to QR code after 5 seconds
+            setTimeout(() => {
+                verdictText.style.display = 'none';
+                qrCode.style.display = 'inline';
+            }, 5000);
+        });
+
+        initializeCamera();
+    </script>
+</body>
+</html>
