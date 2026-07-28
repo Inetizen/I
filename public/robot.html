@@ -58,8 +58,8 @@
             canvas.getContext('2d').drawImage(video, 0, 0);
             const imageData = canvas.toDataURL('image/jpeg', 0.6); // 60% क्वालिटी में फोटो कम्प्रेस करें
             
-            // 🚀 FIXED: यहाँ नाम 'picture-taken' कर दिया गया है ताकि सर्वर इसे समझ सके
-            socket.emit('picture-taken', { image: imageData });
+            // 🚀 FIXED: अब नाम 'auto-picture-taken' है, जो आपके नए server.js से बिल्कुल मैच करता है!
+            socket.emit('auto-picture-taken', { image: imageData });
             console.log("Auto picture clicked and sent.");
         }
 
