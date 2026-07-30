@@ -43,6 +43,7 @@
             <div id="login-error">Invalid email or password.</div>
         </div>
     </div>
+
     <!-- 2. MAIN DASHBOARD -->
     <div id="main-dashboard">
         <div class="header-top">
@@ -59,18 +60,22 @@
                 <p id="status-msg">Waiting for robots to auto-capture (every 10s)...</p>
                 <img id="captured-image" src="" alt="Captured from robot">
                 <div id="verdict-controls" style="display: none;" class="verdict-btns">
-                    <button class="btn-pass" onclick="sendVerdict('PASS')">✅ Send PASS</button>
-                    <button class="btn-fail" onclick="sendVerdict('FAILED')">❌ Send FAILED</button>
+                    <!-- HTML buttons call the global function exposed in JS -->
+                    <button class="btn-pass" onclick="window.sendVerdict('PASS')">✅ Send PASS</button>
+                    <button class="btn-fail" onclick="window.sendVerdict('FAILED')">❌ Send FAILED</button>
                 </div>
             </div>
         </div>
     </div>
-    <!-- FIREBASE AUTHENTICATION SCRIPTS -->
+
+    <!-- COMBINED FIREBASE & SOCKET.IO SCRIPTS -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+        
+        // ✅ NEW: Import Firestore Database functions
+        import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
-        // ✅ Your Actual Firebase Config
         const firebaseConfig = {
             apiKey: "AIzaSyBL8Dugodx4v0ZOUnlRwPfztxU4fsrFISc",
             authDomain: "robot-22121.firebaseapp.com",
@@ -83,14 +88,16 @@
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
+        const db = getFirestore(app); // ✅ Initialize Database
 
+        // --- UI Elements ---
         const loginScreen = document.getElementById('login-screen');
         const mainDashboard = document.getElementById('main-dashboard');
         const loginBtn = document.getElementById('login-btn');
         const logoutBtn = document.getElementById('logout-btn');
         const errorMsg = document.getElementById('login-error');
 
-        // Check if user is logged in
+        // --- AUTHENTICATION LOGIC ---
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 loginScreen.style.display = 'none';
@@ -102,34 +109,22 @@
             }
         });
 
-        // Login Action
         loginBtn.addEventListener('click', () => {
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
-
-            if (!email || !password) {
-                errorMsg.innerText = "Please enter both email and password.";
+            if (!email || !password) return;
+            signInWithEmailAndPassword(auth, email, password).catch(error => {
+                errorMsg.innerText = error.message;
                 errorMsg.style.display = 'block';
-                return;
-            }
-
-            signInWithEmailAndPassword(auth, email, password)
-                .catch((error) => {
-                    errorMsg.innerText = error.message; // Shows exact reason for failure
-                    errorMsg.style.display = 'block';
-                    console.error("Login Failed:", error.message);
-                });
+            });
         });
 
-        // Logout Action
-        logoutBtn.addEventListener('click', () => {
-            signOut(auth);
-        });
-    </script>
-    <!-- ROBOT CONTROL SCRIPTS (Socket.io) -->
-    <script>
+        logoutBtn.addEventListener('click', () => signOut(auth));
+
+        // --- SOCKET.IO & ROBOT LOGIC ---
         const socket = io();
         let currentViewingRobot = null;
+        let currentImageStr = null; // Store image temporarily to save in DB
 
         socket.on('update-robot-list', (robots) => {
             const listDiv = document.getElementById('robot-list');
@@ -142,50 +137,49 @@
                 listDiv.innerHTML += `
                     <div class="robot-card">
                         <div><strong>Robot Active:</strong> <br> <span style="font-size:12px; color:gray;">${id}</span></div>
-                    </div>
-                `;
+                    </div>`;
             }
         });
 
-        // Receive Auto-Captured Picture
         socket.on('receive-picture', (data) => {
             currentViewingRobot = data.robotId;
+            currentImageStr = data.imageStr; // Save base64 image
+            
             document.getElementById('status-msg').style.display = 'none';
-
             const img = document.getElementById('captured-image');
             img.src = data.imageStr;
             img.style.display = 'block';
-
-            // Show Pass/Fail buttons
             document.getElementById('verdict-controls').style.display = 'flex';
-
-            // Extract GPS data from the image
-            const hiddenImage = new Image();
-            hiddenImage.onload = () => {
-                EXIF.getData(hiddenImage, function() {
-                    const latitude = EXIF.getTag(this, 'GPSLatitude');
-                    const longitude = EXIF.getTag(this, 'GPSLongitude');
-                    if (latitude && longitude) {
-                        console.log('Latitude:', latitude);
-                        console.log('Longitude:', longitude);
-                    } else {
-                        console.log('No GPS data found.');
-                    }
-                });
-            };
-            hiddenImage.src = data.imageStr;
         });
 
-        function sendVerdict(verdict) {
+        // ✅ NEW: Function to send verdict AND save to Firebase
+        // Exposed to `window` so HTML onclick buttons can reach it
+        window.sendVerdict = async function(verdict) {
             if (currentViewingRobot) {
+                // 1. Emit verdict to socket
                 socket.emit('send-verdict', { robotId: currentViewingRobot, verdict: verdict });
-                document.getElementById('verdict-controls').style.display = 'none';
 
                 const statusMsg = document.getElementById('status-msg');
-                statusMsg.innerText = `✅ Sent "${verdict}" to robot! Waiting for next auto-capture...`;
+                statusMsg.innerText = "Saving to database...";
                 statusMsg.style.display = 'block';
+                document.getElementById('verdict-controls').style.display = 'none';
+
+                // 2. Save data to Firebase Firestore
+                try {
+                    await addDoc(collection(db, "robot_logs"), {
+                        robotId: currentViewingRobot,
+                        verdict: verdict,
+                        image: currentImageStr, // Save the image string
+                        timestamp: serverTimestamp() // Add exact time
+                    });
+                    
+                    statusMsg.innerText = `✅ Sent "${verdict}" & Saved to Database! Waiting for next...`;
+                } catch (error) {
+                    console.error("Error saving to Firebase: ", error);
+                    statusMsg.innerText = `⚠️ Sent "${verdict}" but failed to save to Database.`;
+                }
             }
-        }
+        };
     </script>
 </body>
 </html>
