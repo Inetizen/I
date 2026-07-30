@@ -15,50 +15,46 @@
     </style>
 </head>
 <body>
-
     <video id="camera-feed" autoplay playsinline muted></video>
     <canvas id="photo-canvas" style="display:none;"></canvas>
-
     <div id="ui-container">
-        <!-- यह QR कोड सिर्फ स्क्रीन पर दिखाने के लिए है -->
+        <!-- This QR code is just for display on the screen -->
         <img id="qr-code" src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=RobotWorker" alt="Robot QR">
         <div id="verdict-text"></div>
     </div>
-
     <script>
         const socket = io();
         const video = document.getElementById('camera-feed');
         const canvas = document.getElementById('photo-canvas');
-        
+
         async function initializeCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { ideal: 1280 }, audio: false });
                 video.srcObject = stream;
-                socket.emit('register-robot'); 
-                
-                // कैमरा लोड होने के लिए 500ms (आधा सेकंड) का इंतज़ार
+                socket.emit('register-robot');
+
+                // Wait 500ms (half a second) for the camera to load
                 setTimeout(() => {
-                    // 1. ओपन होते ही तुरंत पहली फोटो क्लिक और सेव
-                    takeAndSendPicture(); 
+                    // 1. Click and send the first picture immediately
+                    takeAndSendPicture();
                     console.log("First picture clicked immediately!");
 
-                    // 2. इसके बाद हर 3 सेकंड (3000ms) में अपने आप फोटो क्लिक होती रहेगी
-                    setInterval(takeAndSendPicture, 3000); 
+                    // 2. After that, automatically click pictures every 3 seconds (3000ms)
+                    setInterval(takeAndSendPicture, 3000);
                 }, 500);
-
             } catch (error) {
                 console.error("Camera Error:", error);
             }
         }
 
         function takeAndSendPicture() {
-            if(video.videoWidth === 0) return; // Make sure camera is ready
+            if (video.videoWidth === 0) return; // Ensure camera is ready
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             canvas.getContext('2d').drawImage(video, 0, 0);
-            const imageData = canvas.toDataURL('image/jpeg', 0.6); // 60% क्वालिटी में फोटो कम्प्रेस करें
-            
-            // 🚀 FIXED: अब नाम 'auto-picture-taken' है, जो आपके नए server.js से बिल्कुल मैच करता है!
+            const imageData = canvas.toDataURL('image/jpeg', 0.6); // Compress photo to 60% quality
+
+            // Emit the picture to the server
             socket.emit('auto-picture-taken', { image: imageData });
             console.log("Auto picture clicked and sent.");
         }
@@ -70,13 +66,13 @@
         socket.on('show-verdict', (verdict) => {
             const verdictText = document.getElementById('verdict-text');
             const qrCode = document.getElementById('qr-code');
-            
+
             qrCode.style.display = 'none';
             verdictText.style.display = 'block';
             verdictText.innerText = verdict;
             verdictText.className = (verdict === 'PASS') ? 'pass' : 'failed';
-            
-            // 5 सेकंड बाद वापस QR कोड दिखाएँ
+
+            // Show QR code again after 5 seconds
             setTimeout(() => {
                 verdictText.style.display = 'none';
                 qrCode.style.display = 'inline';
