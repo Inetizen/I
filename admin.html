@@ -2,34 +2,54 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Admin Dashboard</title>
+    <title>Admin Dashboard - Full History</title>
     <style>
-        body { text-align: center; font-family: Arial; background: #e9ecef; padding: 20px; }
-        .box { background: white; padding: 20px; border-radius: 10px; max-width: 600px; margin: auto; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
-        img { max-width: 100%; border: 4px solid #333; border-radius: 8px; display: none; margin-top: 15px; }
-        .controls { display: none; margin-top: 20px; }
-        button { padding: 15px 30px; font-size: 18px; border: none; cursor: pointer; border-radius: 5px; color: white; font-weight: bold; margin: 0 10px; }
+        body { font-family: Arial; background: #e9ecef; padding: 20px; text-align: center; margin: 0; }
+        h2 { color: #333; margin-bottom: 20px; }
+        
+        /* Grid Layout for History */
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 20px;
+            max-width: 1200px;
+            margin: auto;
+        }
+
+        /* Individual Card Design */
+        .card { background: white; border-radius: 10px; padding: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); display: flex; flex-direction: column; text-align: left; position: relative; }
+        .card img { width: 100%; height: auto; border-radius: 8px; border: 2px solid #ddd; margin-bottom: 15px; }
+        
+        .info-row { font-size: 14px; color: #555; margin-bottom: 8px; }
+        .info-row strong { color: #222; }
+        
+        .badge { display: inline-block; padding: 5px 12px; border-radius: 15px; font-size: 12px; font-weight: bold; color: white; text-align: center; margin-bottom: 10px; width: fit-content; }
+        .badge.pending { background: #ff9800; }
+        .badge.pass { background: #28a745; }
+        .badge.fail { background: #dc3545; }
+
+        .btn-group { display: flex; gap: 10px; margin-top: auto; }
+        .btn-group button { flex: 1; padding: 10px; font-size: 16px; border: none; cursor: pointer; border-radius: 5px; color: white; font-weight: bold; transition: 0.2s;}
         .btn-pass { background: #28a745; }
+        .btn-pass:hover { background: #218838; }
         .btn-fail { background: #dc3545; }
-        #status { font-size: 18px; font-weight: bold; color: #555; }
+        .btn-fail:hover { background: #c82333; }
+        
+        .map-link { color: #007bff; text-decoration: none; font-weight: bold; }
+        .map-link:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
-    <div class="box">
-        <h2>👨‍💻 Admin Control Panel</h2>
-        <p id="status">Waiting for new PENDING photos from Robot...</p>
-        
-        <img id="display-image" src="" alt="Captured Photo">
-        
-        <div class="controls" id="controls">
-            <button class="btn-pass" onclick="sendVerdict('PASS')">✅ PASS</button>
-            <button class="btn-fail" onclick="sendVerdict('FAIL')">❌ FAIL</button>
-        </div>
+    <h2>👨‍💻 Admin Panel - Robot Logs & History</h2>
+    
+    <!-- Yahan saari photos automatically add hongi -->
+    <div class="grid-container" id="log-container">
+        <p>Loading records...</p>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getFirestore, collection, query, where, onSnapshot, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getFirestore, collection, query, orderBy, onSnapshot, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
         // ✅ AAPKA FIREBASE CONFIGURATION
         const firebaseConfig = {
@@ -44,48 +64,73 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        let currentDocId = null;
-
-        // 1. Firebase me Real-time PENDING photos check karna
-        const q = query(collection(db, "robot_logs"), where("status", "==", "PENDING"));
+        // 1. Firebase se SAARA data laana (Naya sabse upar = desc)
+        const q = query(collection(db, "robot_logs"), orderBy("timestamp", "desc"));
         
         onSnapshot(q, (snapshot) => {
-            if (!snapshot.empty) {
-                // Jo sabse pehli PENDING photo mili, use uthao
-                const firstDoc = snapshot.docs[0];
-                currentDocId = firstDoc.id;
-                const data = firstDoc.data();
-
-                // Image screen par dikhao
-                document.getElementById('display-image').src = data.imageText;
-                document.getElementById('display-image').style.display = "block";
-                document.getElementById('controls').style.display = "block";
-                document.getElementById('status').innerText = "New photo received! Please give verdict.";
-            } else {
-                // Agar koi PENDING photo nahi hai
-                currentDocId = null;
-                document.getElementById('display-image').style.display = "none";
-                document.getElementById('controls').style.display = "none";
-                document.getElementById('status').innerText = "Waiting for new PENDING photos from Robot...";
+            const container = document.getElementById('log-container');
+            container.innerHTML = ''; // Purana clear karo
+            
+            if (snapshot.empty) {
+                container.innerHTML = '<h3>No records found yet.</h3>';
+                return;
             }
+
+            snapshot.forEach((docSnap) => {
+                const data = docSnap.data();
+                const docId = docSnap.id;
+                
+                // Date & Time formatting
+                let dateTimeStr = 'Syncing time...';
+                if (data.timestamp) {
+                    const dateObj = data.timestamp.toDate();
+                    dateTimeStr = dateObj.toLocaleDateString() + " " + dateObj.toLocaleTimeString();
+                }
+
+                // GPS Link for Google Maps
+                let gpsInfo = `Unknown`;
+                if (data.lat && data.lat !== "Unknown") {
+                    gpsInfo = `<a href="https://www.google.com/maps?q=${data.lat},${data.lng}" target="_blank" class="map-link">📍 ${data.lat}, ${data.lng}</a>`;
+                }
+
+                // Badge styling
+                let badgeClass = data.status === "PASS" ? "pass" : (data.status === "FAIL" ? "fail" : "pending");
+                
+                // Buttons dikhana hai ya nahi (Sirf PENDING me dikhenge)
+                let buttonsHtml = '';
+                if (data.status === "PENDING") {
+                    buttonsHtml = `
+                        <div class="btn-group">
+                            <button class="btn-pass" onclick="sendVerdict('${docId}', 'PASS')">✅ PASS</button>
+                            <button class="btn-fail" onclick="sendVerdict('${docId}', 'FAIL')">❌ FAIL</button>
+                        </div>
+                    `;
+                }
+
+                // Card ka HTML generate karna
+                const cardHtml = `
+                    <div class="card">
+                        <div class="badge ${badgeClass}">${data.status}</div>
+                        <img src="${data.imageText}" alt="Robot Capture">
+                        <div class="info-row"><strong>📅 Date & Time:</strong> ${dateTimeStr}</div>
+                        <div class="info-row"><strong>🌍 GPS:</strong> ${gpsInfo}</div>
+                        ${buttonsHtml}
+                    </div>
+                `;
+                
+                container.innerHTML += cardHtml;
+            });
         });
 
-        // 2. Verdict dabane par Database me status update karna
-        window.sendVerdict = async function(verdict) {
-            if (!currentDocId) return;
-
-            document.getElementById('status').innerText = "Updating Database...";
-            document.getElementById('controls').style.display = "none"; // Hide buttons immediately to prevent double click
-
+        // 2. Button dabane par kisi specific photo ka status update karna
+        window.sendVerdict = async function(docId, verdict) {
             try {
-                // PENDING se hatakar PASS ya FAIL kar do
-                await updateDoc(doc(db, "robot_logs", currentDocId), {
+                await updateDoc(doc(db, "robot_logs", docId), {
                     status: verdict
                 });
-                // Firebase apne aap onSnapshot trigger karega aur screen clear kar dega
             } catch (error) {
                 console.error("Error updating verdict:", error);
-                alert("Database update failed. Check console.");
+                alert("Update failed. Check console.");
             }
         };
     </script>
