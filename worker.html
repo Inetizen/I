@@ -2,28 +2,29 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Robot Worker (Auto Capture)</title>
+    <title>Robot Worker (Auto Capture + GPS)</title>
     <style>
         body { text-align: center; font-family: Arial; background: #222; color: white; margin-top: 50px; }
         video { border: 3px solid #00ffcc; border-radius: 10px; width: 300px; }
         #log { margin-top: 20px; font-size: 14px; color: #00ffcc; }
+        .warning { color: yellow; font-size: 12px; margin-top: 10px; }
     </style>
 </head>
 <body>
-    <h2>🤖 Robot Camera (Live Auto-Capture)</h2>
-    <p>Camera is on. Sending photos to Admin automatically...</p>
+    <h2>🤖 Robot Camera (Auto-Capture & GPS)</h2>
+    <p>Camera & Location active. Sending data every 5 seconds...</p>
     
-    <!-- Video dikhega, Canvas hidden rahega photo click karne ke liye -->
     <video id="video" autoplay playsinline muted></video>
     <canvas id="canvas" style="display:none;"></canvas>
     
     <div id="log">Waiting for camera...</div>
+    <div class="warning">⚠️ Please allow Location/GPS permission in your browser!</div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
         import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
-        // ✅ AAPKA FIREBASE CONFIGURATION (Example wala nahi)
+        // ✅ AAPKA FIREBASE CONFIGURATION
         const firebaseConfig = {
             apiKey: "AIzaSyBL8Dugodx4v0ZOUnlRwPfztxU4fsrFISc",
             authDomain: "robot-22121.firebaseapp.com",
@@ -40,45 +41,62 @@
         const canvas = document.getElementById('canvas');
         const log = document.getElementById('log');
 
-        // 1. Camera On Karna
+        // Camera On Karna
         navigator.mediaDevices.getUserMedia({ video: { ideal: 720 }, audio: false })
             .then(stream => { 
                 video.srcObject = stream; 
                 log.innerText = "Camera Started! Auto-capture active.";
-                
-                // 2. Har 5 second me photo click aur upload
-                setInterval(takeAndUploadPicture, 5000); 
+                // Har 5 second me capture process start
+                setInterval(getLocationAndCapture, 5000); 
             })
             .catch(err => { 
                 log.innerText = "❌ Camera Permission Denied!"; 
-                console.error(err); 
             });
 
-        // 3. Photo click karke Text (Base64) me convert aur Firebase me save karna
-        async function takeAndUploadPicture() {
-            if (video.videoWidth === 0) return; // Agar camera ready nahi hai toh ruk jao
+        // GPS Location lena aur fir photo capture karna
+        function getLocationAndCapture() {
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude.toFixed(6);
+                        const lng = position.coords.longitude.toFixed(6);
+                        takeAndUploadPicture(lat, lng);
+                    },
+                    (error) => {
+                        console.warn("GPS Error:", error.message);
+                        takeAndUploadPicture("Unknown", "Unknown"); // Agar GPS na mile toh
+                    },
+                    { enableHighAccuracy: true, timeout: 4000 }
+                );
+            } else {
+                takeAndUploadPicture("Not Supported", "Not Supported");
+            }
+        }
 
-            // Canvas par video frame draw karna
+        // Photo Text me convert karke DB me save karna
+        async function takeAndUploadPicture(lat, lng) {
+            if (video.videoWidth === 0) return;
+
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             canvas.getContext('2d').drawImage(video, 0, 0);
             
-            // Image ko Base64 Text me convert karna (0.5 means 50% quality to save data)
-            const imageBase64 = canvas.toDataURL('image/jpeg', 0.5); 
+            const imageBase64 = canvas.toDataURL('image/jpeg', 0.4); // 40% quality for faster upload
             
             try {
-                // Firebase Database me save karna (Status: PENDING)
                 await addDoc(collection(db, "robot_logs"), {
                     imageText: imageBase64,
                     status: "PENDING",
+                    lat: lat,
+                    lng: lng,
                     timestamp: serverTimestamp()
                 });
                 
                 let timeNow = new Date().toLocaleTimeString();
-                log.innerText = `✅ Last photo sent to database at ${timeNow}`;
+                log.innerText = `✅ Last photo sent at ${timeNow} | GPS: ${lat}, ${lng}`;
             } catch (error) {
                 console.error("Error saving to Firebase: ", error);
-                log.innerText = "⚠️ Failed to send photo. Check Firebase rules.";
+                log.innerText = "⚠️ Failed to send photo.";
             }
         }
     </script>
