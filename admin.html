@@ -28,13 +28,17 @@
         .badge.pass { background: #28a745; }
         .badge.fail { background: #dc3545; }
 
-        .btn-group { display: flex; gap: 10px; margin-top: auto; }
+        .btn-group { display: flex; gap: 10px; margin-top: 10px; }
         .btn-group button { flex: 1; padding: 10px; font-size: 16px; border: none; cursor: pointer; border-radius: 5px; color: white; font-weight: bold; transition: 0.2s;}
         .btn-pass { background: #28a745; }
         .btn-pass:hover { background: #218838; }
         .btn-fail { background: #dc3545; }
         .btn-fail:hover { background: #c82333; }
         
+        /* Delete Button Styles */
+        .btn-delete { background: #6c757d; margin-top: 10px; width: 100%; padding: 10px; font-size: 14px; border: none; cursor: pointer; border-radius: 5px; color: white; font-weight: bold; transition: 0.2s; }
+        .btn-delete:hover { background: #5a6268; }
+
         .map-link { color: #007bff; text-decoration: none; font-weight: bold; }
         .map-link:hover { text-decoration: underline; }
     </style>
@@ -49,7 +53,8 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getFirestore, collection, query, orderBy, onSnapshot, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        // ✅ ADDED deleteDoc import here
+        import { getFirestore, collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
         // ✅ AAPKA FIREBASE CONFIGURATION
         const firebaseConfig = {
@@ -107,7 +112,7 @@
                     `;
                 }
 
-                // Card ka HTML generate karna
+                // Card ka HTML generate karna (Added Delete button at the bottom)
                 const cardHtml = `
                     <div class="card">
                         <div class="badge ${badgeClass}">${data.status}</div>
@@ -115,6 +120,7 @@
                         <div class="info-row"><strong>📅 Date & Time:</strong> ${dateTimeStr}</div>
                         <div class="info-row"><strong>🌍 GPS:</strong> ${gpsInfo}</div>
                         ${buttonsHtml}
+                        <button class="btn-delete" onclick="deleteRecord('${docId}')">🗑️ Delete</button>
                     </div>
                 `;
                 
@@ -131,6 +137,21 @@
             } catch (error) {
                 console.error("Error updating verdict:", error);
                 alert("Update failed. Check console.");
+            }
+        };
+
+        // 3. Delete functionality
+        window.deleteRecord = async function(docId) {
+            // Ask for confirmation before deleting
+            const confirmDelete = confirm("Are you sure you want to permanently delete this image?");
+            
+            if (confirmDelete) {
+                try {
+                    await deleteDoc(doc(db, "robot_logs", docId));
+                } catch (error) {
+                    console.error("Error deleting record:", error);
+                    alert("Delete failed. Check console.");
+                }
             }
         };
     </script>
