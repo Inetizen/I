@@ -2,84 +2,85 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Robot Worker UI</title>
-    <script src="/socket.io/socket.io.js"></script>
+    <title>Robot Worker (Auto Capture)</title>
     <style>
-        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: white; font-family: Arial, sans-serif; }
-        #camera-feed { display: none; }
-        #ui-container { text-align: center; }
-        #verdict-text { font-size: 15vw; font-weight: bold; display: none; text-transform: uppercase; }
-        .pass { color: green; }
-        .failed { color: red; }
+        body { text-align: center; font-family: Arial; background: #222; color: white; margin-top: 50px; }
+        video { border: 3px solid #00ffcc; border-radius: 10px; width: 300px; }
+        #log { margin-top: 20px; font-size: 14px; color: #00ffcc; }
     </style>
 </head>
 <body>
-    <video id="camera-feed" autoplay playsinline muted></video>
-    <canvas id="photo-canvas" style="display:none;"></canvas>
-    <div id="ui-container">
-        <!-- This QR code is just for display on the screen -->
-        <img id="qr-code" src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=RobotWorker" alt="Robot QR">
-        <div id="verdict-text"></div>
-    </div>
-    <script>
-        const socket = io();
-        const video = document.getElementById('camera-feed');
-        const canvas = document.getElementById('photo-canvas');
+    <h2>🤖 Robot Camera (Live Auto-Capture)</h2>
+    <p>Camera is on. Sending photos to Admin automatically...</p>
+    
+    <!-- Video dikhega, Canvas hidden rahega photo click karne ke liye -->
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas" style="display:none;"></canvas>
+    
+    <div id="log">Waiting for camera...</div>
 
-        async function initializeCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { ideal: 1280 }, audio: false });
-                video.srcObject = stream;
-                socket.emit('register-robot');
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
-                // Wait 500ms (half a second) for the camera to load
-                setTimeout(() => {
-                    // 1. Click and send the first picture immediately
-                    takeAndSendPicture();
-                    console.log("First picture clicked immediately!");
+        // ✅ AAPKA FIREBASE CONFIGURATION (Example wala nahi)
+        const firebaseConfig = {
+            apiKey: "AIzaSyBL8Dugodx4v0ZOUnlRwPfztxU4fsrFISc",
+            authDomain: "robot-22121.firebaseapp.com",
+            projectId: "robot-22121",
+            storageBucket: "robot-22121.firebasestorage.app",
+            messagingSenderId: "1097502963537",
+            appId: "1:1097502963537:web:9355ca7bdb29ae453d0570"
+        };
 
-                    // 2. After that, automatically click pictures every 3 seconds (3000ms)
-                    setInterval(takeAndSendPicture, 3000);
-                }, 500);
-            } catch (error) {
-                console.error("Camera Error:", error);
-            }
-        }
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
 
-        function takeAndSendPicture() {
-            if (video.videoWidth === 0) return; // Ensure camera is ready
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const log = document.getElementById('log');
+
+        // 1. Camera On Karna
+        navigator.mediaDevices.getUserMedia({ video: { ideal: 720 }, audio: false })
+            .then(stream => { 
+                video.srcObject = stream; 
+                log.innerText = "Camera Started! Auto-capture active.";
+                
+                // 2. Har 5 second me photo click aur upload
+                setInterval(takeAndUploadPicture, 5000); 
+            })
+            .catch(err => { 
+                log.innerText = "❌ Camera Permission Denied!"; 
+                console.error(err); 
+            });
+
+        // 3. Photo click karke Text (Base64) me convert aur Firebase me save karna
+        async function takeAndUploadPicture() {
+            if (video.videoWidth === 0) return; // Agar camera ready nahi hai toh ruk jao
+
+            // Canvas par video frame draw karna
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             canvas.getContext('2d').drawImage(video, 0, 0);
-            const imageData = canvas.toDataURL('image/jpeg', 0.6); // Compress photo to 60% quality
-
-            // Emit the picture to the server
-            socket.emit('auto-picture-taken', { image: imageData });
-            console.log("Auto picture clicked and sent.");
+            
+            // Image ko Base64 Text me convert karna (0.5 means 50% quality to save data)
+            const imageBase64 = canvas.toDataURL('image/jpeg', 0.5); 
+            
+            try {
+                // Firebase Database me save karna (Status: PENDING)
+                await addDoc(collection(db, "robot_logs"), {
+                    imageText: imageBase64,
+                    status: "PENDING",
+                    timestamp: serverTimestamp()
+                });
+                
+                let timeNow = new Date().toLocaleTimeString();
+                log.innerText = `✅ Last photo sent to database at ${timeNow}`;
+            } catch (error) {
+                console.error("Error saving to Firebase: ", error);
+                log.innerText = "⚠️ Failed to send photo. Check Firebase rules.";
+            }
         }
-
-        // Listen for manual admin trigger
-        socket.on('take-picture', takeAndSendPicture);
-
-        // Listen for PASS/FAIL
-        socket.on('show-verdict', (verdict) => {
-            const verdictText = document.getElementById('verdict-text');
-            const qrCode = document.getElementById('qr-code');
-
-            qrCode.style.display = 'none';
-            verdictText.style.display = 'block';
-            verdictText.innerText = verdict;
-            verdictText.className = (verdict === 'PASS') ? 'pass' : 'failed';
-
-            // Show QR code again after 5 seconds
-            setTimeout(() => {
-                verdictText.style.display = 'none';
-                qrCode.style.display = 'inline';
-            }, 5000);
-        });
-
-        initializeCamera();
     </script>
 </body>
 </html>
